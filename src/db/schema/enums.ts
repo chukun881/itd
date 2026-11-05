@@ -14,7 +14,7 @@ export const jobStatusEnum = pgEnum('job_status', [
   'refunded',      // Credits refunded after failure
 ]);
 
-export const providerEnum = pgEnum('provider', ['tripo', 'rodin', 'meshy']);
+export const providerEnum = pgEnum('provider', ['tripo', 'rodin', 'meshy', 'fal']);
 
 export const creditTransactionTypeEnum = pgEnum('credit_transaction_type', [
   'purchase',      // User bought credits via Stripe

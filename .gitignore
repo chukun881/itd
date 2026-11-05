@@ -36,3 +36,6 @@ Thumbs.db
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# fal quality test downloads
+fal-test-output/

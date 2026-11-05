@@ -1,4 +1,4 @@
-export type SupportedProvider = 'tripo' | 'rodin' | 'meshy' | 'mock';
+export type SupportedProvider = 'tripo' | 'rodin' | 'meshy' | 'fal' | 'mock';
 
 export interface GenerationTaskOptions {
   jobId: string;
