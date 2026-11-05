@@ -18,19 +18,13 @@ export const r2Client = new S3Client({
 const BUCKET = env.R2_BUCKET_NAME;
 
 /**
- * R2 key prefixes — maps to the bucket structure:
- *   raw-uploads/{jobId}.{ext}
- *   raw-models/{jobId}-raw.glb
- *   processed-models/{jobId}.glb
- *   processed-models/{jobId}/mobile.glb
- *   thumbnails/{jobId}.webp
+ * Every file of a job lives under jobs/{jobId}/:
+ *   input-{view}.{ext}, cutout-{view}.png, raw.glb,
+ *   model.glb, model.stl, model.obj, preview.png, model.step
  */
-export const R2_PREFIXES = {
-  RAW_UPLOADS: 'raw-uploads',
-  RAW_MODELS: 'raw-models',
-  PROCESSED_MODELS: 'processed-models',
-  THUMBNAILS: 'thumbnails',
-} as const;
+export function jobKey(jobId: string, file: string): string {
+  return `jobs/${jobId}/${file}`;
+}
 
 /**
  * Generate a presigned PUT URL for direct browser-to-R2 uploads.
@@ -59,14 +53,17 @@ export async function getPresignedPutUrl(
  *
  * @param key - Full R2 object key
  * @param expiresIn - URL expiry in seconds (default: 1 hour)
+ * @param downloadName - If set, the browser downloads the file with this name
  */
 export async function getPresignedGetUrl(
   key: string,
   expiresIn: number = 3600, // 1 hour
+  downloadName?: string,
 ): Promise<string> {
   const command = new GetObjectCommand({
     Bucket: BUCKET,
     Key: key,
+    ResponseContentDisposition: downloadName ? `attachment; filename="${downloadName}"` : undefined,
   });
 
   return getSignedUrl(r2Client, command, { expiresIn });
@@ -86,7 +83,7 @@ export async function uploadToR2(
       Key: key,
       Body: body,
       ContentType: contentType,
-      CacheControl: 'public, max-age=31536000, immutable',
+      CacheControl: 'private, max-age=31536000, immutable',
     }),
   );
 }
@@ -101,11 +98,4 @@ export async function deleteFromR2(key: string): Promise<void> {
       Key: key,
     }),
   );
-}
-
-/**
- * Construct the public CDN URL for a processed model.
- */
-export function getPublicModelUrl(key: string): string {
-  return `${env.R2_PUBLIC_URL}/${key}`;
 }

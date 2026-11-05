@@ -18,10 +18,14 @@ export const env = createEnv({
     R2_ACCESS_KEY_ID: z.string().min(1),
     R2_SECRET_ACCESS_KEY: z.string().min(1),
     R2_BUCKET_NAME: z.string().min(1),
-    R2_PUBLIC_URL: z.string().url(),
 
     // fal.ai (server-side only)
     FAL_KEY: z.string().min(1),
+
+    // Comma-separated emails that may open /admin and upload STEP files
+    ADMIN_EMAILS: z.string().default(''),
+    // Jobs each user may start per calendar month (protects the fal balance)
+    MONTHLY_JOB_CAP: z.coerce.number().int().positive().default(40),
 
     // Node environment
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -50,8 +54,9 @@ export const env = createEnv({
     R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
     R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
-    R2_PUBLIC_URL: process.env.R2_PUBLIC_URL,
     FAL_KEY: process.env.FAL_KEY,
+    ADMIN_EMAILS: process.env.ADMIN_EMAILS,
+    MONTHLY_JOB_CAP: process.env.MONTHLY_JOB_CAP,
     NODE_ENV: process.env.NODE_ENV,
 
     // Client
