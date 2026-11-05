@@ -39,3 +39,6 @@ Thumbs.db
 
 # fal quality test downloads
 fal-test-output/
+
+# Local test images
+test-assets/
