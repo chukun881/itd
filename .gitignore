@@ -46,3 +46,6 @@ test-assets/
 # Files prepared for the client, and the local CAD venv
 send/
 .venv-cad/
+
+# Pilot job log (real client data)
+pilot-jobs.csv

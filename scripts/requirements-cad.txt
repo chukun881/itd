@@ -2,3 +2,6 @@ trimesh
 numpy
 cadquery-ocp
 fast-simplification
+scipy
+fal-client
+shapely
