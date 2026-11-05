@@ -52,3 +52,5 @@ pilot-jobs.csv
 
 # Multi-view experiment outputs
 experiments/
+__pycache__/
+send.zip
