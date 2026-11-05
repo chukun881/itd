@@ -50,7 +50,19 @@ SPEND = EXP / "spend.csv"
 BRIA = ("fal-ai/bria/background/remove", 0.03)  # with a prompt
 SAM3 = ("fal-ai/sam-3/image", 0.005)
 NANO = ("fal-ai/nano-banana-2/edit", 0.12 + 0.002)  # 2K = 1.5 x $0.08, + high thinking
+NANO_PRO = ("fal-ai/nano-banana-pro/edit", 0.15)  # the model behind Gemini app "Pro" images
 SEEDREAM = ("fal-ai/bytedance/seedream/v4.5/edit", 0.04)
+SHEET_MODELS = {
+    "nano": (NANO, lambda prompt, url, seed: {
+        "prompt": prompt, "image_urls": [url], "aspect_ratio": "4:1", "resolution": "2K",
+        "thinking_level": "high", "seed": seed, "output_format": "png", "num_images": 1}),
+    "nanopro": (NANO_PRO, lambda prompt, url, seed: {
+        "prompt": prompt, "image_urls": [url], "aspect_ratio": "21:9", "resolution": "2K",
+        "seed": seed, "output_format": "png", "num_images": 1}),
+    "seedream": (SEEDREAM, lambda prompt, url, seed: {
+        "prompt": prompt, "image_urls": [url], "image_size": {"width": 4096, "height": 1024},
+        "seed": seed, "num_images": 1, "max_images": 1}),
+}
 HUNYUAN = ("fal-ai/hunyuan-3d/v3.1/pro/image-to-3d", 0.375)
 HUNYUAN_MULTIVIEW = 0.15
 TRIPO = ("tripo3d/h3.1/multiview-to-3d", 0.20)  # texture and pbr off
@@ -59,20 +71,20 @@ TYPICAL_HEIGHT = {"dining_chair": 850, "lounge_chair": 750, "sofa": 850, "table"
 ANGLES = ("front", "left_front", "right_front")
 SEED = 42
 
-SHEET_PROMPT = """Use the {piece} in the reference image. Do not redesign it. Keep the exact
-shape, proportions, number and position of legs, frame parts, cushions, curves,
-materials and colours. Keep exactly the same proportions (width, depth and height
-ratios) as the reference image.
+SHEET_PROMPT = """Look at the {piece} in the uploaded image. Do not create a new design. Keep the
+exact shape, proportions, number and position of legs, panels, frame parts,
+cushions, curves, materials and colours.
 
-Create one wide orthographic turnaround sheet with 4 equal square panels side by
-side, left to right: FRONT view, LEFT side view, BACK view, RIGHT side view.
+Generate a single wide image with 4 views of this exact {piece} side by side, left to
+right: FRONT view, LEFT side view, BACK view, RIGHT side view. Each view at its
+natural width, separated by clear white space. All views at the same scale and the
+same height, standing on the same baseline, orthographic projection with zero
+perspective distortion, camera at half the height of the piece.
 
-In every panel: the same {piece}, the same scale, the camera at half the height of
-the piece, orthographic projection with no perspective, the piece centred,
-standing on the same baseline and filling about 80% of the panel height.
+If a part is hidden in the photo, assume it matches the visible symmetric part.{hint}
 
-Pure white background. No shadows, no floor, no text, no labels, no borders, no
-other objects."""
+Pure solid white background. No shadows, no floor line, no text, no labels, no
+borders, no divider lines, no other objects."""
 
 
 # ---------- bookkeeping ----------
@@ -166,47 +178,92 @@ def pad_square(img: Image.Image, fill: float = 0.85, background=(0, 0, 0, 0)) ->
     return canvas
 
 
+def foreground(img: Image.Image) -> np.ndarray:
+    """Pixels that differ from their row's background, taken from the left and right
+    margins of the sheet, so white, grey floor gradients and dark bands all drop out."""
+    arr = np.asarray(img.convert("RGB")).astype(int)
+    m = max(2, arr.shape[1] // 100)
+    background = np.median(np.concatenate([arr[:, :m], arr[:, -m:]], axis=1), axis=1, keepdims=True)
+    return np.abs(arr - background).max(axis=2) > 30
+
+
+def clean_background(img: Image.Image) -> Image.Image:
+    """Paint every background pixel (see foreground) pure white."""
+    arr = np.asarray(img.convert("RGB")).copy()
+    arr[~foreground(img)] = 255
+    return Image.fromarray(arr)
+
+
+def panel_boxes(img: Image.Image) -> list[tuple[int, int, int, int]] | None:
+    """Find the 4 views by the white gaps between them (views may have different widths).
+    Thin divider lines and stray marks are ignored; a horizontal floor line is too thin
+    per column to count as content."""
+    dark = foreground(img)
+    h, w = dark.shape
+    content = dark.sum(axis=0) > 0.02 * h
+    runs, start = [], None
+    for x, c in enumerate(list(content) + [False]):
+        if c and start is None:
+            start = x
+        elif not c and start is not None:
+            runs.append([start, x])
+            start = None
+    # merge runs separated by tiny gaps (texture inside one view)
+    merged = []
+    for r in runs:
+        if merged and r[0] - merged[-1][1] < 0.01 * w:
+            merged[-1][1] = r[1]
+        else:
+            merged.append(r)
+    views = [r for r in merged if r[1] - r[0] > 0.04 * w]
+    if len(views) != 4:
+        return None
+    boxes = []
+    for x0, x1 in views:
+        rows = np.nonzero(dark[:, x0:x1].sum(axis=1) > 0.02 * (x1 - x0))[0]
+        boxes.append((x0, int(rows.min()), x1, int(rows.max()) + 1))
+    return boxes
+
+
 def split_panels(sheet: Path, out_dir: Path) -> list[Path]:
-    """Cut a 4-panel sheet (1 row of 4, or a 2x2 grid) into white square panels."""
-    img = Image.open(sheet).convert("RGB")
-    w, h = img.size
-    if w >= 3 * h:
+    """Cut a 4-view sheet into white square panels: front, left, back, right."""
+    img = clean_background(Image.open(sheet))
+    boxes = panel_boxes(img)
+    if boxes is None:  # equal quarters as a last resort; check_sheet reports the failure
+        w, h = img.size
         boxes = [(i * w // 4, 0, (i + 1) * w // 4, h) for i in range(4)]
-    else:
-        boxes = [(0, 0, w // 2, h // 2), (w // 2, 0, w, h // 2), (0, h // 2, w // 2, h), (w // 2, h // 2, w, h)]
+    # One canvas size for all views so they keep the same scale, piece on a shared baseline.
+    side = int(max(max(b[2] - b[0], b[3] - b[1]) for b in boxes) / 0.85)
     paths = []
     for label, box in zip(("front", "left", "back", "right"), boxes):
-        panel = pad_square(img.crop(box), 0.85, (255, 255, 255, 255)).convert("RGB")
+        view = img.crop(box)
+        canvas = Image.new("RGB", (side, side), "white")
+        canvas.paste(view, ((side - view.width) // 2, side - int(side * 0.075) - view.height))
         p = out_dir / f"{sheet.stem}_{label}.png"
-        panel.save(p)
+        canvas.save(p)
         paths.append(p)
     return paths
 
 
 def check_sheet(sheet: Path, cutout: Path, angle: str) -> list[str]:
-    """Consistency checks: same piece height in every panel; front panel ratio vs the photo."""
+    """Consistency checks: 4 separate views, same piece height in every view, and
+    (for a front photo) the front view's width/height close to the photo's."""
     img = Image.open(sheet).convert("RGB")
-    w, h = img.size
-    n = 4
-    heights, ratios = [], []
-    for i in range(n):
-        box = content_box(img.crop((i * w // n, 0, (i + 1) * w // n, h))) if w >= 3 * h else None
-        if box:
-            heights.append(box[3] - box[1])
-            ratios.append((box[2] - box[0]) / (box[3] - box[1]))
+    boxes = panel_boxes(img)
+    if boxes is None:
+        return ["could not find 4 separate views"]
     problems = []
-    if len(heights) < 4:
-        problems.append(f"found the piece in {len(heights)} of 4 panels")
-        return problems
+    heights = [b[3] - b[1] for b in boxes]
     spread = (max(heights) - min(heights)) / max(heights)
-    if spread > 0.03:
-        problems.append(f"panel heights differ by {spread:.0%} (limit 3%)")
+    if spread > 0.05:
+        problems.append(f"view heights differ by {spread:.0%} (limit 5%)")
     if angle == "front":
         cb = content_box(Image.open(cutout))
         photo_ratio = (cb[2] - cb[0]) / (cb[3] - cb[1])
-        diff = abs(ratios[0] - photo_ratio) / photo_ratio
+        ratio = (boxes[0][2] - boxes[0][0]) / heights[0]
+        diff = abs(ratio - photo_ratio) / photo_ratio
         if diff > 0.10:
-            problems.append(f"front panel width/height {ratios[0]:.2f} vs photo {photo_ratio:.2f} ({diff:.0%}, limit 10%)")
+            problems.append(f"front view width/height {ratio:.2f} vs photo {photo_ratio:.2f} ({diff:.0%}, limit 10%)")
     return problems
 
 
@@ -369,8 +426,10 @@ def render(mesh: trimesh.Trimesh, target: Path, title: str) -> None:
     plt.close(fig)
 
 
-def finish_model(raw_glb: Path, out: Path, label: str, a: argparse.Namespace) -> dict:
+def finish_model(raw_glb: Path, out: Path, label: str, a: argparse.Namespace, rotate_y_deg: float = 0) -> dict:
     mesh = simplify(load_mesh(raw_glb), 50000)
+    if rotate_y_deg:  # Tripo returns the piece turned 90 degrees (width along Z)
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(rotate_y_deg), [0, 1, 0]))
     err = symmetry_error(mesh)
     if err <= SYMMETRY_MAX_ERROR:
         mesh = symmetrize(mesh)
@@ -423,32 +482,35 @@ def phase_sheets(a: argparse.Namespace) -> None:
     if not cutout.exists():
         sys.exit(f"Missing {cutout}")
     seed = SEED + a.retry
-    items = [(f"Nano Banana 2 sheet (2K, seed {seed})", NANO[1]), (f"Seedream 4.5 sheet (seed {seed})", SEEDREAM[1])]
+    items = [(f"{m} sheet (seed {seed})", SHEET_MODELS[m][0][1]) for m in a.models]
+    if a.import_sheet:
+        items.append((f"import {Path(a.import_sheet).name} as sheet_{a.import_label}", 0.0))
     gate("sheets", items, a)
-    load_fal_key()
-    url = upload(cutout)
-    prompt = SHEET_PROMPT.format(piece=state["piece"])
+    hint = f" Note from the user: {a.hint.strip()}" if a.hint else ""
+    prompt = SHEET_PROMPT.format(piece=state["piece"], hint=hint)
     print(f"  Prompt:\n{prompt}\n")
 
-    nano = call(a.name, "nano-banana-2 sheet", NANO, {
-        "prompt": prompt, "image_urls": [url], "aspect_ratio": "4:1", "resolution": "2K",
-        "thinking_level": "high", "seed": seed, "output_format": "png", "num_images": 1,
-    })
-    seedream = call(a.name, "seedream-4.5 sheet", SEEDREAM, {
-        "prompt": prompt, "image_urls": [url], "image_size": {"width": 4096, "height": 1024},
-        "seed": seed, "num_images": 1, "max_images": 1,
-    })
-    report = {}
-    for label, result in (("nano", nano), ("seedream", seedream)):
-        sheet = download(result["images"][0]["url"], out / f"sheet_{label}.png")
+    sheets = {}
+    if a.import_sheet:
+        target = out / f"sheet_{a.import_label}.png"
+        Image.open(a.import_sheet).convert("RGB").save(target)
+        sheets[a.import_label] = target
+    if a.models:
+        load_fal_key()
+        url = upload(cutout)
+        for m in a.models:
+            endpoint, build = SHEET_MODELS[m]
+            result = call(a.name, f"{m} sheet", endpoint, build(prompt, url, seed))
+            sheets[m] = download(result["images"][0]["url"], out / f"sheet_{m}.png")
+
+    checks = state.setdefault("sheet_checks", {})
+    for label, sheet in sheets.items():
         split_panels(sheet, out)
-        problems = check_sheet(sheet, cutout, state["angle"])
-        report[label] = problems
-        print(f"  {label}: {'OK' if not problems else '; '.join(problems)}")
-    state.update({"cutout": a.use, "sheet_checks": report, "sheet_seed": seed})
+        checks[label] = check_sheet(sheet, cutout, state["angle"])
+        print(f"  {label}: {'OK' if not checks[label] else '; '.join(checks[label])}")
+    state.update({"cutout": a.use, "prompt": prompt})
     save_state(a.name, state)
-    print("  Look at the sheets before running models. A failed sheet: rerun with --retry 1 (new seed),"
-          " or skip its pipeline with --skip.")
+    print("  Look at the sheets and panels before running models.")
 
 
 def phase_models(a: argparse.Namespace) -> None:
@@ -461,9 +523,9 @@ def phase_models(a: argparse.Namespace) -> None:
     if "A" in runs:
         items.append(("A: Hunyuan Pro, real cut-out only", HUNYUAN[1]))
     if "B" in runs:
-        items.append(("B: Hunyuan Pro multi-view (Nano Banana panels)", HUNYUAN[1] + HUNYUAN_MULTIVIEW))
+        items.append((f"B: Hunyuan Pro multi-view ({a.b_sheet} panels)", HUNYUAN[1] + HUNYUAN_MULTIVIEW))
     if "D" in runs:
-        items.append(("D: Tripo multiview (Seedream panels)", TRIPO[1]))
+        items.append((f"D: Tripo multiview ({a.d_sheet} panels)", TRIPO[1]))
     gate("models", items, a)
     load_fal_key()
     import fal_client
@@ -474,18 +536,20 @@ def phase_models(a: argparse.Namespace) -> None:
     if "A" in runs:
         jobs["A"] = (HUNYUAN, {"input_image_url": cut_url, "generate_type": "Geometry"}, 0.0)
     if "B" in runs:
-        args = {"generate_type": "Geometry", "left_image_url": panel("nano", "left"),
-                "back_image_url": panel("nano", "back"), "right_image_url": panel("nano", "right")}
+        sb = a.b_sheet
+        args = {"generate_type": "Geometry", "left_image_url": panel(sb, "left"),
+                "back_image_url": panel(sb, "back"), "right_image_url": panel(sb, "right")}
         if angle == "front":
             args["input_image_url"] = cut_url
         else:  # keep the real 3/4 photo in its true 45-degree slot
-            args["input_image_url"] = panel("nano", "front")
+            args["input_image_url"] = panel(sb, "front")
             args[f"{angle}_image_url"] = cut_url
         jobs["B"] = (HUNYUAN, args, HUNYUAN_MULTIVIEW)
     if "D" in runs:
-        front = cut_url if angle == "front" else panel("seedream", "front")
+        sd = a.d_sheet
+        front = cut_url if angle == "front" else panel(sd, "front")
         jobs["D"] = (TRIPO, {
-            "image_urls": [front, panel("seedream", "left"), panel("seedream", "back"), panel("seedream", "right")],
+            "image_urls": [front, panel(sd, "left"), panel(sd, "back"), panel(sd, "right")],
             "texture": False, "pbr": False, "geometry_quality": "standard", "model_seed": SEED,
         }, 0.0)
 
@@ -494,8 +558,11 @@ def phase_models(a: argparse.Namespace) -> None:
     for k, (ep, _, extra) in jobs.items():
         log_spend(a.name, f"model {k}", ep[1] + extra)
 
-    labels = random.Random(a.name).sample(["X", "Y", "Z"], 3)
-    key, results = {}, {}
+    key_path = out / "blind_key.json"
+    key = json.loads(key_path.read_text()) if key_path.exists() else {}
+    free = [x for x in ("X", "Y", "Z", "W", "V", "U") if x not in key]
+    labels = random.Random(a.name + str(len(key))).sample(free, len(handles))
+    results = state.get("models", {})
     for (k, handle), label in zip(handles.items(), labels):
         res = handle.get()
         mesh_url = (res.get("model_glb") or res.get("model_mesh") or {}).get("url")
@@ -503,10 +570,10 @@ def phase_models(a: argparse.Namespace) -> None:
             print(f"  {k}: no mesh in result: {list(res)}")
             continue
         raw = download(mesh_url, out / f"raw_{k}.glb")
-        results[label] = finish_model(raw, out, label, a)
-        key[label] = k
+        results[label] = finish_model(raw, out, label, a, rotate_y_deg=90 if k == "D" else 0)
+        key[label] = f"{k} ({a.b_sheet if k == 'B' else a.d_sheet if k == 'D' else 'photo only'})"
         print(f"  draft {label}: {results[label]}")
-    (out / "blind_key.json").write_text(json.dumps(key, indent=2))  # do not show the reviewer
+    key_path.write_text(json.dumps(key, indent=2))  # do not show the reviewer
     state["models"] = results
     save_state(a.name, state)
     print(f"  Done. Send {out}/X|Y|Z .step/.stl/.png for the blind review. Key in blind_key.json.")
@@ -531,6 +598,10 @@ def main() -> None:
     common(s)
     s.add_argument("--use", choices=("bria", "sam"), required=True, help="which cut-out to use")
     s.add_argument("--retry", type=int, default=0, help="seed offset for a second try")
+    s.add_argument("--models", nargs="*", default=[], choices=tuple(SHEET_MODELS), help="image models to run")
+    s.add_argument("--hint", help='what the photo does not show, e.g. "right end same as left"')
+    s.add_argument("--import-sheet", help="use an existing sheet image (no cost)")
+    s.add_argument("--import-label", default="imported")
 
     m = sub.add_parser("models")
     common(m)
@@ -539,6 +610,8 @@ def main() -> None:
     m.add_argument("--d", type=float)
     m.add_argument("--h", type=float)
     m.add_argument("--skip", nargs="*", default=[], choices=("A", "B", "D"), help="pipelines to skip")
+    m.add_argument("--b-sheet", default="nanopro", help="sheet label whose panels B uses")
+    m.add_argument("--d-sheet", default="nanopro", help="sheet label whose panels D uses")
 
     a = p.parse_args()
     EXP.mkdir(exist_ok=True)
