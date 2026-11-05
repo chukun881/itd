@@ -49,3 +49,6 @@ send/
 
 # Pilot job log (real client data)
 pilot-jobs.csv
+
+# Multi-view experiment outputs
+experiments/

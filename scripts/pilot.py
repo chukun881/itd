@@ -74,8 +74,9 @@ def symmetrize(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     mesh.apply_translation([-centre_x, 0, 0])
     half = mesh.slice_plane(plane_origin=[0, 0, 0], plane_normal=[1, 0, 0])
     mirrored = half.copy()
+    # trimesh already reverses the face winding for a mirror transform, so the
+    # normals stay outward; do not invert() again.
     mirrored.apply_transform(np.diag([-1.0, 1.0, 1.0, 1.0]))
-    mirrored.invert()  # mirroring flips face winding; restore outward normals
     return trimesh.util.concatenate([half, mirrored])
 
 
