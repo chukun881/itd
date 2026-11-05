@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { JOB_VIEWS } from '@/db/schema';
+import { JOB_VIEWS } from '@/lib/shared';
 
 export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;

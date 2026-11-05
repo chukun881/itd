@@ -2,8 +2,7 @@ import { TriMesh, bounds } from './mesh';
 
 /** Mean left/right mirror mismatch above which a piece is treated as asymmetric. */
 export const SYMMETRY_MAX_ERROR = 0.02;
-/** Stretch on any axis above this is reported as a warning. */
-export const STRETCH_WARN = 0.1;
+export { STRETCH_WARN } from '@/lib/shared';
 
 /**
  * How far the mesh is from left/right (X) mirror symmetry: mean distance from each

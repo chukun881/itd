@@ -2,6 +2,7 @@ import { pgTable, uuid, text, timestamp, jsonb, index, integer, real, boolean } 
 import { relations } from 'drizzle-orm';
 import { users } from './users';
 import { jobStatusEnum } from './enums';
+import type { JobView } from '@/lib/shared';
 
 export const jobs = pgTable('jobs', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -58,8 +59,7 @@ export const jobsRelations = relations(jobs, ({ one }) => ({
   }),
 }));
 
-export const JOB_VIEWS = ['front', 'back', 'left', 'right'] as const;
-export type JobView = (typeof JOB_VIEWS)[number];
+export { JOB_VIEWS, type JobView } from '@/lib/shared';
 
 export interface JobOutputKeys {
   glb?: string;

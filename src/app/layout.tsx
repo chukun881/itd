@@ -4,10 +4,9 @@ import { Toaster } from 'sonner';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Image to 3D — AI-Powered 3D Model Generation',
-  description:
-    'Upload any image and get a textured 3D model in seconds. Preview in your browser, download as GLB/USDZ/OBJ.',
-  keywords: ['image to 3d', '3d model generator', 'ai 3d', 'glb', '3d printing', 'webgl'],
+  title: 'Furniture 3D Reference',
+  description: 'Internal tool: furniture photos and real size to a 3D reference mesh for Inventor.',
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({
