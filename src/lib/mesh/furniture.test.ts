@@ -51,6 +51,19 @@ describe('symmetry', () => {
     expect(symmetryError(lShape)).toBeGreaterThan(0.01);
   });
 
+  it('cuts at the centre plane so a closed piece stays closed (no seam gap)', () => {
+    const sym = symmetrize(box(-1, 0, 0, 1.4, 1, 1)); // closed box, off-centre
+    const edges = new Map<string, number>();
+    for (let t = 0; t < sym.indices.length; t += 3) {
+      for (const [a, b] of [[0, 1], [1, 2], [2, 0]]) {
+        const i = sym.indices[t + a], j = sym.indices[t + b];
+        const k = i < j ? `${i},${j}` : `${j},${i}`;
+        edges.set(k, (edges.get(k) ?? 0) + 1);
+      }
+    }
+    expect([...edges.values()].filter((c) => c === 1)).toHaveLength(0);
+  });
+
   it('mirrors the +X half and keeps the width', () => {
     const lopsided = merge(box(-1, 0, 0, -0.7, 1, 1), box(0.8, 0, 0, 1, 1, 1));
     const sym = symmetrize(lopsided);

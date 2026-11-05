@@ -77,7 +77,11 @@ def symmetrize(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     # trimesh already reverses the face winding for a mirror transform, so the
     # normals stay outward; do not invert() again.
     mirrored.apply_transform(np.diag([-1.0, 1.0, 1.0, 1.0]))
-    return trimesh.util.concatenate([half, mirrored])
+    joined = trimesh.util.concatenate([half, mirrored])
+    # The halves meet at X=0 with duplicate vertices; merge them so the seam is
+    # closed (otherwise simplifying for STEP opens a gap down the middle).
+    joined.merge_vertices()
+    return joined
 
 
 def stretch_to_size(mesh: trimesh.Trimesh, w: float, d: float, h: float) -> dict:

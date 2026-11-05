@@ -1,4 +1,4 @@
-import { TriMesh, bounds } from './mesh';
+import { TriMesh, bounds, compact, weld } from './mesh';
 import type { SizeMode } from '@/lib/shared';
 
 /** Mean left/right mirror mismatch above which a piece is treated as asymmetric. */
@@ -49,24 +49,56 @@ export function symmetryError(mesh: TriMesh, samples = 4000): number {
 }
 
 /**
- * Keep the +X half and mirror it onto -X. Triangles are assigned by centroid, so
- * the seam at X=0 is slightly ragged; fine for a reference mesh.
+ * Keep the +X half and mirror it onto -X. Triangles that cross the centre plane are
+ * cut exactly at the plane (new vertices shared between neighbours), so both halves
+ * meet on a clean seam and welding closes it. An open seam turns into a gap down the
+ * middle once the mesh is simplified for STEP.
  */
 export function symmetrize(mesh: TriMesh): TriMesh {
   const { min, max } = bounds(mesh);
   const cx = (min[0] + max[0]) / 2;
   const p = mesh.positions;
+  const pos: number[] = [];
+  for (let i = 0; i < p.length; i += 3) pos.push(p[i] - cx, p[i + 1], p[i + 2]);
+  const x = (i: number) => pos[i * 3];
+
+  // Vertex where edge (a, b) crosses x = 0, created once per edge.
+  const cuts = new Map<string, number>();
+  const cut = (a: number, b: number) => {
+    const k = a < b ? `${a},${b}` : `${b},${a}`;
+    let v = cuts.get(k);
+    if (v === undefined) {
+      const t = x(a) / (x(a) - x(b));
+      v = pos.length / 3;
+      pos.push(0, pos[a * 3 + 1] + t * (pos[b * 3 + 1] - pos[a * 3 + 1]), pos[a * 3 + 2] + t * (pos[b * 3 + 2] - pos[a * 3 + 2]));
+      cuts.set(k, v);
+    }
+    return v;
+  };
+
   const kept: number[] = [];
   for (let t = 0; t < mesh.indices.length; t += 3) {
-    const a = mesh.indices[t], b = mesh.indices[t + 1], c = mesh.indices[t + 2];
-    if ((p[a * 3] + p[b * 3] + p[c * 3]) / 3 >= cx) kept.push(a, b, c);
+    const tri = [mesh.indices[t], mesh.indices[t + 1], mesh.indices[t + 2]];
+    const inside = tri.map((i) => x(i) >= 0);
+    const n = inside.filter(Boolean).length;
+    if (n === 3) { kept.push(...tri); continue; }
+    if (n === 0) continue;
+    // Clip the triangle to x >= 0, keeping the vertex order (and so the winding).
+    const poly: number[] = [];
+    for (let k = 0; k < 3; k++) {
+      const a = tri[k], b = tri[(k + 1) % 3];
+      if (inside[k]) poly.push(a);
+      if (inside[k] !== inside[(k + 1) % 3]) poly.push(cut(a, b));
+    }
+    for (let k = 1; k + 1 < poly.length; k++) kept.push(poly[0], poly[k], poly[k + 1]);
   }
-  const vCount = p.length / 3;
-  const positions = new Float32Array(p.length * 2);
+
+  const vCount = pos.length / 3;
+  const positions = new Float32Array(pos.length * 2);
   for (let i = 0; i < vCount; i++) {
-    const x = p[i * 3] - cx;
-    positions.set([x, p[i * 3 + 1], p[i * 3 + 2]], i * 3);
-    positions.set([-x, p[i * 3 + 1], p[i * 3 + 2]], (vCount + i) * 3);
+    const px = Math.max(0, pos[i * 3]);
+    positions.set([px, pos[i * 3 + 1], pos[i * 3 + 2]], i * 3);
+    positions.set([-px, pos[i * 3 + 1], pos[i * 3 + 2]], (vCount + i) * 3);
   }
   const indices = new Uint32Array(kept.length * 2);
   indices.set(kept);
@@ -76,7 +108,7 @@ export function symmetrize(mesh: TriMesh): TriMesh {
     indices[kept.length + t + 1] = vCount + kept[t + 2];
     indices[kept.length + t + 2] = vCount + kept[t + 1];
   }
-  return { positions, indices };
+  return weld(compact({ positions, indices }));
 }
 
 export interface StretchResult {
