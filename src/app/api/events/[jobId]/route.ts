@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import { getPublicModelUrl } from '@/lib/r2';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Vercel function limit for SSE streaming
 
 export async function GET(
   req: NextRequest,
@@ -56,9 +57,9 @@ export async function GET(
           return;
         }
 
-        // Lightweight polling fallback loop (checking DB status every 2 seconds for up to 3 minutes)
+        // Lightweight polling fallback loop (checking DB status every 2 seconds for up to ~56 seconds)
         let iterations = 0;
-        const maxIterations = 90; // ~180 seconds
+        const maxIterations = 28; // ~56 seconds (within 60s maxDuration)
 
         const intervalId = setInterval(async () => {
           iterations++;

@@ -2,7 +2,6 @@
 
 Your application MVP is **100% developed, typed, and compiled**. You can test it locally right now in **Demo/Mock mode** by running:
 ```bash
-cd itd
 npm run dev
 ```
 
@@ -39,7 +38,7 @@ To take this platform into live production with real AI 3D generation, database 
      ```json
      [
        {
-         "AllowedOrigins": ["http://localhost:3000", "https://yourdomain.com"],
+         "AllowedOrigins": ["http://localhost:3001", "https://yourdomain.com"],
          "AllowedMethods": ["GET", "PUT"],
          "AllowedHeaders": ["Content-Type", "Content-Length"],
          "ExposeHeaders": ["ETag"],
@@ -86,7 +85,7 @@ To take this platform into live production with real AI 3D generation, database 
 - Point nameservers to Cloudflare (recommended for zero-latency CDN integration with R2).
 
 ### 3.2 Vercel Deployment
-1. Push this repository to your GitHub account (`chukun881/itd`).
-2. Go to [vercel.com](https://vercel.com) > **Add New Project** > Import `itd`.
+1. Push this repository to your GitHub account (`chukun881/image-to-3d-saas`).
+2. Go to [vercel.com](https://vercel.com) > **Add New Project** > Import `image-to-3d-saas`.
 3. Add the environment variables from your `.env.local` to the Vercel Project Settings.
 4. Deploy! Vercel will automatically configure SSL, edge middleware, and serverless functions.

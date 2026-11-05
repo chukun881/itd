@@ -8,7 +8,8 @@ import { CREDIT_PACKS } from '@/lib/constants';
 import { env } from '@/env';
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-12-18.acacia' as any,
+  // Pinned older than the SDK's LatestApiVersion (2025-02-24.acacia); align in the Stripe fix PR.
+  apiVersion: '2024-12-18.acacia' as unknown as Stripe.LatestApiVersion,
 });
 
 export async function POST(req: NextRequest) {
