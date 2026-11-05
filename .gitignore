@@ -33,3 +33,6 @@ Thumbs.db
 .idea/
 *.sublime-project
 *.sublime-workspace
+
+# TypeScript incremental build cache
+*.tsbuildinfo
