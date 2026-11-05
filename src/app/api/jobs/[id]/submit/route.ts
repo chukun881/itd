@@ -35,7 +35,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           urls[view] = photoUrl;
           return;
         }
-        const cutoutUrl = await removeBackground(photoUrl);
+        const cutoutUrl = await removeBackground(photoUrl, job.pieceLabel);
         urls[view] = cutoutUrl;
         const png = new Uint8Array(await (await fetch(cutoutUrl)).arrayBuffer());
         cutoutKeys[view] = jobKey(job.id, `cutout-${view}.png`);
@@ -46,7 +46,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     const requestId = await submitModel(urls, `${env.NEXT_PUBLIC_APP_URL}/api/webhook/fal`);
     await db
       .update(jobs)
-      .set({ providerTaskId: requestId, cutoutKeys, costUsd: estimateCostUsd(views.length, job.removeBackground) })
+      .set({ providerTaskId: requestId, cutoutKeys, costUsd: estimateCostUsd(views.length, job.removeBackground, !!job.pieceLabel) })
       .where(eq(jobs.id, job.id));
     return NextResponse.json({ status: 'submitted' });
   } catch (err) {

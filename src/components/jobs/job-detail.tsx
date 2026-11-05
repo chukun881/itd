@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
 import type { Job } from '@/db/schema';
 import type { JobFileUrls } from '@/lib/jobs';
-import { STRETCH_WARN, type JobView } from '@/lib/shared';
+import { JOB_VIEWS, STRETCH_WARN, VIEW_LABELS } from '@/lib/shared';
 import { StatusBadge, sizeLabel } from './status-badge';
 
 const ModelViewer = dynamic(() => import('@/components/viewer/model-viewer').then((m) => m.ModelViewer), { ssr: false });
@@ -13,7 +13,7 @@ const ModelViewer = dynamic(() => import('@/components/viewer/model-viewer').the
 type JobJson = Omit<Job, 'createdAt' | 'submittedAt' | 'completedAt'> & { createdAt: string; completedAt: string | null };
 const RUNNING: Job['status'][] = ['pending', 'submitted', 'processing'];
 
-export function JobDetail({ jobId, isAdmin }: { jobId: string; isAdmin: boolean }) {
+export function JobDetail({ jobId }: { jobId: string }) {
   const [job, setJob] = useState<JobJson | null>(null);
   const [files, setFiles] = useState<JobFileUrls | null>(null);
 
@@ -40,9 +40,10 @@ export function JobDetail({ jobId, isAdmin }: { jobId: string; isAdmin: boolean 
   const m = job.metrics;
 
   const warnings: string[] = [];
-  if (m && Math.abs(m.stretchWidthPct) > STRETCH_WARN * 100) warnings.push(`Width needed ${m.stretchWidthPct}% stretch: the AI may have misread the proportions.`);
-  if (m && Math.abs(m.stretchDepthPct) > STRETCH_WARN * 100) warnings.push(`Depth needed ${m.stretchDepthPct}% stretch: the AI may have misread the proportions.`);
+  if (m?.stretchWidthPct !== undefined && Math.abs(m.stretchWidthPct) > STRETCH_WARN * 100) warnings.push(`Width needed ${m.stretchWidthPct}% stretch to match the given size: the AI may have misread the proportions.`);
+  if (m?.stretchDepthPct !== undefined && Math.abs(m.stretchDepthPct) > STRETCH_WARN * 100) warnings.push(`Depth needed ${m.stretchDepthPct}% stretch to match the given size: the AI may have misread the proportions.`);
   if (m && !m.symmetryApplied) warnings.push('Left/right symmetry was not applied (piece looks asymmetric).');
+  const SIZE_MODE = { stretched: 'fitted to the given W x D x H', scaled: 'scaled evenly to the given size', typical: 'scaled to the typical height (no size given)' };
 
   return (
     <div className="space-y-6">
@@ -63,12 +64,12 @@ export function JobDetail({ jobId, isAdmin }: { jobId: string; isAdmin: boolean 
           )}
           {files && (
             <div className="flex flex-wrap gap-3">
-              {(['front', 'back', 'left', 'right'] as JobView[]).map((v) =>
+              {JOB_VIEWS.map((v) =>
                 files.inputs[v] ? (
                   <figure key={v} className="w-28 text-center text-xs text-neutral-500">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={files.cutouts[v] ?? files.inputs[v]} alt={v} className="h-28 w-28 rounded border bg-white object-contain" />
-                    <figcaption>{v}{files.cutouts[v] ? ' (cut out)' : ''}</figcaption>
+                    <figcaption>{VIEW_LABELS[v]}{files.cutouts[v] ? ' (cut out)' : ''}</figcaption>
                   </figure>
                 ) : null,
               )}
@@ -81,28 +82,28 @@ export function JobDetail({ jobId, isAdmin }: { jobId: string; isAdmin: boolean 
             <section className="rounded-lg border border-neutral-200 bg-white p-4">
               <h2 className="mb-3 font-medium">Download</h2>
               <div className="flex flex-wrap gap-2 text-sm">
-                {(['stl', 'obj', 'glb', 'step'] as const).map((f) =>
+                {(['step', 'stl', 'obj', 'glb'] as const).map((f) =>
                   files.downloads[f] ? (
                     <a key={f} href={files.downloads[f]} className="rounded border border-neutral-300 px-3 py-1.5 uppercase hover:bg-neutral-50">{f}</a>
                   ) : null,
                 )}
               </div>
-              <p className="mt-2 text-xs text-neutral-500">STL and OBJ are in mm: import into Inventor as a mesh and trace over it.</p>
-              {!files.downloads.step && <StepRequest job={job} onDone={load} />}
-              {isAdmin && <AdminStepUpload jobId={job.id} onDone={load} />}
+              <p className="mt-2 text-xs text-neutral-500">
+                All files are in mm. STEP opens in Inventor as a faceted surface body to model over (not editable features).
+                STL and OBJ have more detail.
+              </p>
             </section>
           )}
 
           {m && (
             <section className="rounded-lg border border-neutral-200 bg-white p-4 text-sm">
-              <h2 className="mb-3 font-medium">Accuracy report</h2>
+              <h2 className="mb-3 font-medium">Draft details</h2>
               <dl className="grid grid-cols-2 gap-y-1">
-                <dt className="text-neutral-500">Stretch width</dt><dd>{m.stretchWidthPct}%</dd>
-                <dt className="text-neutral-500">Stretch depth</dt><dd>{m.stretchDepthPct}%</dd>
+                <dt className="text-neutral-500">Size</dt><dd>{m.widthMm} x {m.depthMm} x {m.heightMm} mm</dd>
+                <dt className="text-neutral-500">Sizing</dt><dd>{SIZE_MODE[m.sizeMode]}</dd>
+                {m.stretchWidthPct !== undefined && (<><dt className="text-neutral-500">Stretch W / D</dt><dd>{m.stretchWidthPct}% / {m.stretchDepthPct}%</dd></>)}
                 <dt className="text-neutral-500">Symmetry</dt><dd>{m.symmetryApplied ? 'applied' : 'skipped'}</dd>
-                {m.seatEstimateMm !== undefined && (<><dt className="text-neutral-500">Seat height</dt><dd>{m.seatEstimateMm} mm ({m.seatErrorMm! >= 0 ? '+' : ''}{m.seatErrorMm} mm)</dd></>)}
-                {m.armEstimateMm !== undefined && (<><dt className="text-neutral-500">Arm height</dt><dd>{m.armEstimateMm} mm ({m.armErrorMm! >= 0 ? '+' : ''}{m.armErrorMm} mm)</dd></>)}
-                <dt className="text-neutral-500">Triangles</dt><dd>{m.faces.toLocaleString()}</dd>
+                <dt className="text-neutral-500">Triangles</dt><dd>{m.faces.toLocaleString()}{m.stepFaces ? ` (STEP ${m.stepFaces.toLocaleString()})` : ''}</dd>
               </dl>
               {warnings.map((w) => <p key={w} className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-800">{w}</p>)}
             </section>
@@ -113,40 +114,6 @@ export function JobDetail({ jobId, isAdmin }: { jobId: string; isAdmin: boolean 
         </div>
       </div>
     </div>
-  );
-}
-
-function StepRequest({ job, onDone }: { job: JobJson; onDone: () => void }) {
-  if (job.stepRequested) return <p className="mt-3 text-xs text-neutral-500">STEP requested. It will appear here when ready.</p>;
-  return (
-    <button
-      className="mt-3 text-xs text-blue-700 underline"
-      onClick={async () => {
-        const res = await fetch(`/api/jobs/${job.id}/request-step`, { method: 'POST' });
-        if (res.ok) { toast.success('STEP requested'); onDone(); } else toast.error('Request failed');
-      }}
-    >
-      Need a STEP file? Request it
-    </button>
-  );
-}
-
-function AdminStepUpload({ jobId, onDone }: { jobId: string; onDone: () => void }) {
-  async function upload(file?: File) {
-    if (!file) return;
-    const res = await fetch(`/api/admin/jobs/${jobId}/step`, { method: 'POST' });
-    if (!res.ok) return toast.error('Could not get an upload URL');
-    const { uploadUrl, contentType } = await res.json();
-    const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
-    if (!put.ok) return toast.error('Upload failed');
-    await fetch(`/api/admin/jobs/${jobId}/step`, { method: 'PUT' });
-    toast.success('STEP uploaded');
-    onDone();
-  }
-  return (
-    <label className="mt-3 block text-xs text-neutral-500">
-      Admin: upload STEP <input type="file" accept=".step,.stp" className="mt-1 block text-xs" onChange={(e) => upload(e.target.files?.[0])} />
-    </label>
   );
 }
 

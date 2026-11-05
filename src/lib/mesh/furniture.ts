@@ -1,4 +1,5 @@
 import { TriMesh, bounds } from './mesh';
+import type { SizeMode } from '@/lib/shared';
 
 /** Mean left/right mirror mismatch above which a piece is treated as asymmetric. */
 export const SYMMETRY_MAX_ERROR = 0.02;
@@ -99,49 +100,61 @@ export function stretchToSize(mesh: TriMesh, widthMm: number, depthMm: number, h
   return { stretchWidth: sx / sy - 1, stretchDepth: sz / sy - 1 };
 }
 
-/** Heights (mm) of flat upward-facing surfaces, largest area first. */
-export function upwardSurfaceHeights(mesh: TriMesh, binMm = 10): number[] {
+/** Scale evenly so `axis` (0 = X width, 1 = Y height, 2 = Z depth) is `mm` long; base on Y=0, centred on X/Z. */
+export function scaleUniform(mesh: TriMesh, axis: 0 | 1 | 2, mm: number): void {
+  const { min, max, size } = bounds(mesh);
+  const k = mm / size[axis];
+  const cx = (min[0] + max[0]) / 2, cz = (min[2] + max[2]) / 2;
   const p = mesh.positions;
-  const totals = new Map<number, number>();
-  for (let t = 0; t < mesh.indices.length; t += 3) {
-    const a = mesh.indices[t] * 3, b = mesh.indices[t + 1] * 3, c = mesh.indices[t + 2] * 3;
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    const len = Math.hypot(nx, ny, nz);
-    if (len === 0 || ny / len <= 0.9) continue;
-    const y = (p[a + 1] + p[b + 1] + p[c + 1]) / 3;
-    const bin = Math.floor(y / binMm);
-    totals.set(bin, (totals.get(bin) ?? 0) + len / 2);
+  for (let i = 0; i < p.length; i += 3) {
+    p[i] = (p[i] - cx) * k;
+    p[i + 1] = (p[i + 1] - min[1]) * k;
+    p[i + 2] = (p[i + 2] - cz) * k;
   }
-  return [...totals.entries()].sort((x, y) => y[1] - x[1]).map(([bin]) => (bin + 0.5) * binMm);
 }
 
-export interface MeasurementChecks {
-  seatEstimateMm?: number;
-  seatErrorMm?: number;
-  armEstimateMm?: number;
-  armErrorMm?: number;
+export interface SizeInput {
+  widthMm?: number | null;
+  depthMm?: number | null;
+  heightMm?: number | null;
+  typicalHeightMm: number;
 }
 
-/** Estimate seat/arm heights from flat upward surfaces and compare with the real values. */
-export function checkMeasurements(mesh: TriMesh, heightMm: number, seatMm?: number | null, armMm?: number | null): MeasurementChecks {
-  const candidates = upwardSurfaceHeights(mesh).filter((y) => y > 0.05 * heightMm && y < 0.95 * heightMm);
-  const result: MeasurementChecks = {};
-  const closest = (list: number[], target: number) =>
-    list.reduce((best, y) => (Math.abs(y - target) < Math.abs(best - target) ? y : best));
-  if (seatMm && candidates.length) {
-    const est = closest(candidates.slice(0, 5), seatMm);
-    result.seatEstimateMm = Math.round(est);
-    result.seatErrorMm = Math.round(est - seatMm);
+export interface SizeResult {
+  mode: SizeMode;
+  widthMm: number;
+  depthMm: number;
+  heightMm: number;
+  stretchWidthPct?: number;
+  stretchDepthPct?: number;
+}
+
+/**
+ * Size the mesh in mm. All three sizes: stretch each axis. One or two: scale evenly
+ * from height, else width, else depth (never distort). None: scale evenly to the
+ * typical height of the piece type. Mutates `mesh.positions`.
+ */
+export function sizeMesh(mesh: TriMesh, input: SizeInput): SizeResult {
+  const { widthMm: w, depthMm: d, heightMm: h } = input;
+  let mode: SizeMode;
+  let stretch: StretchResult | undefined;
+  if (w && d && h) {
+    mode = 'stretched';
+    stretch = stretchToSize(mesh, w, d, h);
+  } else if (h || w || d) {
+    mode = 'scaled';
+    if (h) scaleUniform(mesh, 1, h); else if (w) scaleUniform(mesh, 0, w); else scaleUniform(mesh, 2, d!);
+  } else {
+    mode = 'typical';
+    scaleUniform(mesh, 1, input.typicalHeightMm);
   }
-  if (armMm && candidates.length) {
-    const above = candidates.slice(0, 8).filter((y) => y > (seatMm ?? 0) + 50);
-    if (above.length) {
-      const est = closest(above, armMm);
-      result.armEstimateMm = Math.round(est);
-      result.armErrorMm = Math.round(est - armMm);
-    }
-  }
-  return result;
+  const { size } = bounds(mesh);
+  const pct = (x: number) => Math.round(x * 1000) / 10;
+  return {
+    mode,
+    widthMm: Math.round(size[0]),
+    depthMm: Math.round(size[2]),
+    heightMm: Math.round(size[1]),
+    ...(stretch ? { stretchWidthPct: pct(stretch.stretchWidth), stretchDepthPct: pct(stretch.stretchDepth) } : {}),
+  };
 }

@@ -1,4 +1,5 @@
 import type { Job } from '@/db/schema';
+import { PIECE_TYPE_INFO } from '@/lib/shared';
 
 const LABELS: Partial<Record<Job['status'], [string, string]>> = {
   pending: ['Waiting for photos', 'bg-neutral-100 text-neutral-700'],
@@ -13,6 +14,11 @@ export function StatusBadge({ status }: { status: Job['status'] }) {
   return <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${style}`}>{label}</span>;
 }
 
-export function sizeLabel(job: Pick<Job, 'widthMm' | 'depthMm' | 'heightMm'>): string {
-  return `${job.widthMm} x ${job.depthMm} x ${job.heightMm} mm`;
+/** Piece type and size: the final model size once ready, else what the customer gave. */
+export function sizeLabel(job: Pick<Job, 'pieceType' | 'widthMm' | 'depthMm' | 'heightMm' | 'metrics'>): string {
+  const type = PIECE_TYPE_INFO[job.pieceType]?.label ?? job.pieceType;
+  const m = job.metrics;
+  if (m) return `${type} · ${m.widthMm} x ${m.depthMm} x ${m.heightMm} mm${m.sizeMode === 'typical' ? ' (typical height)' : ''}`;
+  const given = [['W', job.widthMm], ['D', job.depthMm], ['H', job.heightMm]].filter(([, v]) => v).map(([k, v]) => `${k} ${v}`);
+  return `${type} · ${given.length ? `${given.join(' ')} mm` : 'size not given'}`;
 }

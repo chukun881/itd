@@ -1,9 +1,10 @@
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { cookies } from 'next/headers';
 import { and, eq, gte, ne, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { Job, JobView, jobs, users, User } from '@/db/schema';
 import { env } from '@/env';
 import { getPresignedGetUrl } from '@/lib/r2';
+import { SESSION_COOKIE, readSessionToken } from '@/lib/auth/session';
 
 export interface Viewer {
   user: User;
@@ -15,22 +16,12 @@ export function isAdminEmail(email: string, adminEmails = env.ADMIN_EMAILS): boo
   return list.includes(email.trim().toLowerCase());
 }
 
-/** The signed-in user, created in our database on first visit. Null if signed out. */
+/** The signed-in user, or null if signed out, deleted, or the session was revoked. */
 export async function getViewer(): Promise<Viewer | null> {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) return null;
-
-  let [user] = await db.select().from(users).where(eq(users.clerkId, clerkId)).limit(1);
-  if (!user) {
-    const clerkUser = await currentUser();
-    const email = clerkUser?.primaryEmailAddress?.emailAddress ?? clerkUser?.emailAddresses[0]?.emailAddress ?? '';
-    const name = [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(' ') || null;
-    [user] = await db
-      .insert(users)
-      .values({ clerkId, email, name, imageUrl: clerkUser?.imageUrl ?? null })
-      .onConflictDoUpdate({ target: users.clerkId, set: { updatedAt: new Date() } })
-      .returning();
-  }
+  const session = await readSessionToken((await cookies()).get(SESSION_COOKIE)?.value, env.SESSION_SECRET);
+  if (!session || !/^[0-9a-f-]{36}$/i.test(session.userId)) return null;
+  const [user] = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
+  if (!user || user.sessionVersion !== session.version) return null;
   return { user, isAdmin: isAdminEmail(user.email) };
 }
 

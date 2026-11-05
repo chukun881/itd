@@ -1,16 +1,20 @@
-import { pgTable, uuid, text, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, integer, uniqueIndex } from 'drizzle-orm/pg-core';
 
+// Users are created by the admin with scripts/create-user.mjs; there is no sign-up.
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
-  clerkId: text('clerk_id').notNull().unique(),
-  email: text('email').notNull(),
+  email: text('email').notNull(), // stored lower-case
   name: text('name'),
-  imageUrl: text('image_url'),
+  passwordHash: text('password_hash').notNull(),
+  // Bump to sign the user out of every device
+  sessionVersion: integer('session_version').notNull().default(1),
+  // Brute-force guard: 5 wrong passwords lock the account for 15 minutes
+  failedLogins: integer('failed_logins').notNull().default(0),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
-  index('users_clerk_id_idx').on(table.clerkId),
-  index('users_email_idx').on(table.email),
+  uniqueIndex('users_email_unique').on(table.email),
 ]);
 
 export type User = typeof users.$inferSelect;
