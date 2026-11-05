@@ -3,6 +3,7 @@ import { TripoClient } from './tripo';
 import { RodinClient } from './rodin';
 import { MeshyClient } from './meshy';
 import { Mock3DClient } from './mock';
+import { FalProvider } from './fal';
 import { env } from '@/env';
 
 export * from './types';
@@ -11,6 +12,7 @@ const tripo = new TripoClient();
 const rodin = new RodinClient();
 const meshy = new MeshyClient();
 const mock = new Mock3DClient();
+const fal = new FalProvider();
 
 /**
  * Dispatch 3D generation task with automated provider failover.
@@ -31,7 +33,13 @@ export async function dispatchGenerationTask(
 
   // Primary provider routing
   const primary: ProviderClient =
-    preferredProvider === 'rodin' ? rodin : preferredProvider === 'meshy' ? meshy : tripo;
+    preferredProvider === 'fal'
+      ? fal
+      : preferredProvider === 'rodin'
+        ? rodin
+        : preferredProvider === 'meshy'
+          ? meshy
+          : tripo;
 
   try {
     return await primary.submitTask(options);

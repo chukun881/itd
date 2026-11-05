@@ -37,6 +37,7 @@ export const env = createEnv({
     // 3D API Providers
     TRIPO_API_KEY: z.string().min(1),
     RODIN_API_KEY: z.string().min(1).optional(),
+    FAL_KEY: z.string().min(1).optional(),
     MESHY_API_KEY: z.string().min(1).optional(),
 
     // Internal
@@ -86,6 +87,7 @@ export const env = createEnv({
     QSTASH_NEXT_SIGNING_KEY: process.env.QSTASH_NEXT_SIGNING_KEY,
     TRIPO_API_KEY: process.env.TRIPO_API_KEY,
     RODIN_API_KEY: process.env.RODIN_API_KEY,
+    FAL_KEY: process.env.FAL_KEY,
     MESHY_API_KEY: process.env.MESHY_API_KEY,
     INTERNAL_API_SECRET: process.env.INTERNAL_API_SECRET,
     COMPRESSION_LAMBDA_URL: process.env.COMPRESSION_LAMBDA_URL,

@@ -36,3 +36,16 @@ Thumbs.db
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# fal quality test downloads
+fal-test-output/
+
+# Local test images
+test-assets/
+
+# Files prepared for the client, and the local CAD venv
+send/
+.venv-cad/
+
+# Pilot job log (real client data)
+pilot-jobs.csv
