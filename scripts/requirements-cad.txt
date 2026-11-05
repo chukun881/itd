@@ -1,0 +1,4 @@
+trimesh
+numpy
+cadquery-ocp
+fast-simplification

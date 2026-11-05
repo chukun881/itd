@@ -42,3 +42,7 @@ fal-test-output/
 
 # Local test images
 test-assets/
+
+# Files prepared for the client, and the local CAD venv
+send/
+.venv-cad/
