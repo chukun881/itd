@@ -15,6 +15,13 @@
       "when": 1793843837149,
       "tag": "0001_brainy_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793886792537,
+      "tag": "0002_perfect_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }

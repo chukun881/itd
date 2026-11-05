@@ -1,3 +1,5 @@
+> **Superseded (2026-11-05).** This document describes the original public SaaS plan. The project is now an internal, invite-only furniture reference-mesh tool built on fal.ai. See README.md.
+
 # Architecture Document
 ## Image-to-3D SaaS Platform — Serverless Cloud Architecture
 
