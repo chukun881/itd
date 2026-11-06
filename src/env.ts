@@ -10,8 +10,8 @@ export const env = createEnv({
     // Database
     DATABASE_URL: z.string().url().startsWith('postgresql://'),
 
-    // Clerk Auth
-    CLERK_SECRET_KEY: z.string().min(1),
+    // Signs the session cookie. Generate with: openssl rand -base64 48
+    SESSION_SECRET: z.string().min(32),
 
     // Cloudflare R2
     R2_ACCOUNT_ID: z.string().min(1),
@@ -36,9 +36,6 @@ export const env = createEnv({
    * Must be prefixed with NEXT_PUBLIC_ to be exposed to the browser.
    */
   client: {
-    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().startsWith('pk_'),
-    NEXT_PUBLIC_CLERK_SIGN_IN_URL: z.string().default('/sign-in'),
-    NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: z.string().default('/'),
     NEXT_PUBLIC_APP_URL: z.string().url(),
   },
 
@@ -49,7 +46,7 @@ export const env = createEnv({
   runtimeEnv: {
     // Server
     DATABASE_URL: process.env.DATABASE_URL,
-    CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
+    SESSION_SECRET: process.env.SESSION_SECRET,
     R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
     R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
@@ -60,9 +57,6 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
 
     // Client
-    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
-    NEXT_PUBLIC_CLERK_SIGN_IN_URL: process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL,
-    NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   },
 

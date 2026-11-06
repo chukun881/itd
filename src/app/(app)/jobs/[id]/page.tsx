@@ -6,5 +6,5 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const viewer = (await getViewer())!;
   const job = await getAccessibleJob((await params).id, viewer);
   if (!job) notFound();
-  return <JobDetail jobId={job.id} isAdmin={viewer.isAdmin} />;
+  return <JobDetail jobId={job.id} />;
 }

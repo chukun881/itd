@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { TriMesh, bounds, faceCount, readGlb, simplify, weld, writeGlb, writeObj, writeStl } from './mesh';
-import { checkMeasurements, stretchToSize, symmetrize, symmetryError } from './furniture';
+import { sizeMesh, stretchToSize, symmetrize, symmetryError } from './furniture';
 
 /** Axis-aligned box from (x0,y0,z0) to (x1,y1,z1), 12 outward-facing triangles. */
 function box(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): TriMesh {
@@ -51,6 +51,19 @@ describe('symmetry', () => {
     expect(symmetryError(lShape)).toBeGreaterThan(0.01);
   });
 
+  it('cuts at the centre plane so a closed piece stays closed (no seam gap)', () => {
+    const sym = symmetrize(box(-1, 0, 0, 1.4, 1, 1)); // closed box, off-centre
+    const edges = new Map<string, number>();
+    for (let t = 0; t < sym.indices.length; t += 3) {
+      for (const [a, b] of [[0, 1], [1, 2], [2, 0]]) {
+        const i = sym.indices[t + a], j = sym.indices[t + b];
+        const k = i < j ? `${i},${j}` : `${j},${i}`;
+        edges.set(k, (edges.get(k) ?? 0) + 1);
+      }
+    }
+    expect([...edges.values()].filter((c) => c === 1)).toHaveLength(0);
+  });
+
   it('mirrors the +X half and keeps the width', () => {
     const lopsided = merge(box(-1, 0, 0, -0.7, 1, 1), box(0.8, 0, 0, 1, 1, 1));
     const sym = symmetrize(lopsided);
@@ -60,16 +73,31 @@ describe('symmetry', () => {
   });
 });
 
-describe('checkMeasurements', () => {
-  it('finds the seat height from the largest flat upward surface', () => {
-    // legs to 450 mm, seat slab 450-470 mm, back up to 900 mm
-    const chair = merge(
-      box(-200, 0, -200, -170, 450, -170), box(170, 0, -200, 200, 450, -170),
-      box(-200, 450, -200, 200, 470, 200), box(-200, 470, 170, 200, 900, 200),
-    );
-    const checks = checkMeasurements(chair, 900, 470);
-    expect(checks.seatEstimateMm).toBeDefined();
-    expect(Math.abs(checks.seatErrorMm!)).toBeLessThanOrEqual(10);
+describe('sizeMesh', () => {
+  const typicalHeightMm = 850;
+
+  it('stretches to all three customer sizes', () => {
+    const r = sizeMesh(box(0, 0, 0, 1, 2, 1), { widthMm: 500, depthMm: 600, heightMm: 900, typicalHeightMm });
+    expect(r).toMatchObject({ mode: 'stretched', widthMm: 500, depthMm: 600, heightMm: 900 });
+    expect(r.stretchWidthPct).toBeCloseTo(11.1, 1);
+  });
+
+  it('scales evenly from the height when only the height is given', () => {
+    const mesh = box(0, 0, 0, 1, 2, 1);
+    const r = sizeMesh(mesh, { heightMm: 900, typicalHeightMm });
+    expect(r).toMatchObject({ mode: 'scaled', widthMm: 450, depthMm: 450, heightMm: 900 });
+    expect(r.stretchWidthPct).toBeUndefined();
+    expect(bounds(mesh).min[1]).toBeCloseTo(0);
+  });
+
+  it('scales evenly from the width when height is missing', () => {
+    const r = sizeMesh(box(0, 0, 0, 1, 2, 1), { widthMm: 500, depthMm: 999, typicalHeightMm });
+    expect(r).toMatchObject({ mode: 'scaled', widthMm: 500, heightMm: 1000 });
+  });
+
+  it('uses the typical height when no size is given', () => {
+    const r = sizeMesh(box(0, 0, 0, 1, 2, 1), { typicalHeightMm });
+    expect(r).toMatchObject({ mode: 'typical', heightMm: 850, widthMm: 425 });
   });
 });
 
@@ -99,7 +127,5 @@ describe.skipIf(!fs.existsSync(REAL_CHAIR))('real chair GLB', () => {
     const sym = symmetrize(mesh);
     const stretch = stretchToSize(sym, 490, 550, 850);
     expect(Math.abs(stretch.stretchWidth)).toBeLessThan(0.02); // Python: 0.2-0.4%
-    const checks = checkMeasurements(sym, 850, 460);
-    expect(Math.abs(checks.seatErrorMm!)).toBeLessThanOrEqual(15); // Python: 5 mm
   }, 60000);
 });

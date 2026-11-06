@@ -2,7 +2,7 @@ import { pgTable, uuid, text, timestamp, jsonb, index, integer, real, boolean } 
 import { relations } from 'drizzle-orm';
 import { users } from './users';
 import { jobStatusEnum } from './enums';
-import type { JobView } from '@/lib/shared';
+import type { JobView, PieceType, SizeMode } from '@/lib/shared';
 
 export const jobs = pgTable('jobs', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -12,11 +12,13 @@ export const jobs = pgTable('jobs', {
   // What the user asked for
   name: text('name').notNull().default(''),
   note: text('note'),
-  widthMm: integer('width_mm').notNull().default(0),
-  depthMm: integer('depth_mm').notNull().default(0),
-  heightMm: integer('height_mm').notNull().default(0),
-  seatHeightMm: integer('seat_height_mm'),
-  armHeightMm: integer('arm_height_mm'),
+  pieceType: text('piece_type').$type<PieceType>().notNull().default('other'),
+  // Which object to keep when the photo shows several, e.g. "table"
+  pieceLabel: text('piece_label'),
+  // Overall size if the customer gave one (often unknown). The final size is in metrics.
+  widthMm: integer('width_mm'),
+  depthMm: integer('depth_mm'),
+  heightMm: integer('height_mm'),
   removeBackground: boolean('remove_background').notNull().default(false),
 
   // R2 keys: { front, back?, left?, right? }
@@ -27,9 +29,6 @@ export const jobs = pgTable('jobs', {
   // Pipeline numbers (stretch, symmetry, measurement checks, faces)
   metrics: jsonb('metrics').$type<JobMetrics>(),
   costUsd: real('cost_usd'),
-
-  // STEP is produced by hand on request
-  stepRequested: boolean('step_requested').notNull().default(false),
 
   // Designer feedback
   feedbackRating: integer('feedback_rating'),
@@ -59,7 +58,7 @@ export const jobsRelations = relations(jobs, ({ one }) => ({
   }),
 }));
 
-export { JOB_VIEWS, type JobView } from '@/lib/shared';
+export { JOB_VIEWS, type JobView, PIECE_TYPES, type PieceType } from '@/lib/shared';
 
 export interface JobOutputKeys {
   glb?: string;
@@ -71,14 +70,17 @@ export interface JobOutputKeys {
 
 export interface JobMetrics {
   faces: number;
+  stepFaces?: number;
   symmetryApplied: boolean;
   symmetryError: number;
-  stretchWidthPct: number;
-  stretchDepthPct: number;
-  seatEstimateMm?: number;
-  seatErrorMm?: number;
-  armEstimateMm?: number;
-  armErrorMm?: number;
+  sizeMode: SizeMode;
+  // Final size of the delivered model (mm)
+  widthMm: number;
+  depthMm: number;
+  heightMm: number;
+  // Only when sizeMode is 'stretched': stretch relative to a uniform scale (%)
+  stretchWidthPct?: number;
+  stretchDepthPct?: number;
   processingSeconds: number;
 }
 

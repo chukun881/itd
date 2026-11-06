@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import type { JobView } from '@/lib/shared';
-import { ACCEPTED_IMAGE_TYPES, MAX_IMAGE_BYTES, MIN_IMAGE_SHORT_SIDE } from '@/lib/job-input';
+import { PIECE_TYPES, PIECE_TYPE_INFO, type JobView } from '@/lib/shared';
+import { ACCEPTED_IMAGE_TYPES, GOOD_IMAGE_SHORT_SIDE, MAX_IMAGE_BYTES, MIN_IMAGE_SHORT_SIDE } from '@/lib/job-input';
 
 interface Photo {
   file: File;
@@ -13,18 +13,22 @@ interface Photo {
   preview: string;
 }
 
-const VIEWS: { view: JobView; label: string; hint: string }[] = [
-  { view: 'front', label: 'Main photo (required)', hint: '3/4 view: front and one side' },
-  { view: 'back', label: 'Back (optional)', hint: 'Straight from behind' },
-  { view: 'left', label: 'Left side (optional)', hint: 'Straight from the left' },
-  { view: 'right', label: 'Right side (optional)', hint: 'Straight from the right' },
+const MAIN: { view: JobView; label: string; hint: string } = {
+  view: 'front', label: 'Main photo (required)', hint: 'Front or 3/4 view. An online photo or a design picture is fine.',
+};
+const EXTRA: { view: JobView; label: string; hint: string }[] = [
+  { view: 'left_front', label: 'Front-left 45°', hint: 'Front and left side visible' },
+  { view: 'right_front', label: 'Front-right 45°', hint: 'Front and right side visible' },
+  { view: 'left', label: 'Left side', hint: 'Straight from the left' },
+  { view: 'right', label: 'Right side', hint: 'Straight from the right' },
+  { view: 'back', label: 'Back', hint: 'Straight from behind' },
 ];
 
 const TIPS = [
-  'Stand 2-3 m away and zoom 2x. Close-up wide photos bend the shape.',
-  'Hold the camera at about half the height of the piece.',
-  'The whole piece in the photo, filling most of it. Even light, no hard shadows.',
-  'More views (back, sides) = more accurate model.',
+  'If the listing has more photos of the same piece, add them below. Real extra photos help most.',
+  'Pick the largest, sharpest version of the photo.',
+  'Whole piece visible, not cut off at the edges.',
+  'Photo of a set (table and chairs)? Choose "busy background" and say which piece you want.',
 ];
 
 function readImage(file: File): Promise<Photo> {
@@ -43,6 +47,7 @@ export function JobForm() {
   const router = useRouter();
   const [photos, setPhotos] = useState<Partial<Record<JobView, Photo>>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [busyBackground, setBusyBackground] = useState(false);
 
   async function pickPhoto(view: JobView, file?: File) {
     if (!file) return;
@@ -52,6 +57,9 @@ export function JobForm() {
       const photo = await readImage(file);
       if (Math.min(photo.width, photo.height) < MIN_IMAGE_SHORT_SIDE) {
         return toast.error(`Photo is too small (${photo.width}x${photo.height} px). Use at least ${MIN_IMAGE_SHORT_SIDE} px on the short side.`);
+      }
+      if (Math.min(photo.width, photo.height) < GOOD_IMAGE_SHORT_SIDE) {
+        toast.warning(`Small photo (${photo.width}x${photo.height} px): the draft will be rougher.`);
       }
       setPhotos((p) => ({ ...p, [view]: photo }));
     } catch (e) {
@@ -73,12 +81,12 @@ export function JobForm() {
         body: JSON.stringify({
           name: form.get('name'),
           note: form.get('note') || undefined,
-          widthMm: Number(form.get('widthMm')),
-          depthMm: Number(form.get('depthMm')),
-          heightMm: Number(form.get('heightMm')),
-          seatHeightMm: numberOrUndefined(String(form.get('seatHeightMm') ?? '')),
-          armHeightMm: numberOrUndefined(String(form.get('armHeightMm') ?? '')),
-          removeBackground: form.get('background') === 'busy',
+          pieceType: form.get('pieceType'),
+          pieceLabel: busyBackground ? String(form.get('pieceLabel') ?? '').trim() || undefined : undefined,
+          widthMm: numberOrUndefined(String(form.get('widthMm') ?? '')),
+          depthMm: numberOrUndefined(String(form.get('depthMm') ?? '')),
+          heightMm: numberOrUndefined(String(form.get('heightMm') ?? '')),
+          removeBackground: busyBackground,
           photos: entries.map(([view, p]) => ({ view, contentType: p.file.type, size: p.file.size, width: p.width, height: p.height })),
         }),
       });
@@ -105,53 +113,63 @@ export function JobForm() {
   }
 
   const input = 'w-full rounded border border-neutral-300 px-3 py-2 text-sm';
+  const slot = ({ view, label, hint }: { view: JobView; label: string; hint: string }) => (
+    <label key={view} className="block cursor-pointer rounded-lg border border-dashed border-neutral-300 bg-white p-3 hover:border-neutral-500">
+      <div className="text-sm font-medium">{label}</div>
+      <div className="mb-2 text-xs text-neutral-500">{hint}</div>
+      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-neutral-50">
+        {photos[view] ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={photos[view]!.preview} alt={view} className="h-full w-full object-contain" />
+        ) : (
+          <span className="text-xs text-neutral-400">Click to choose a photo</span>
+        )}
+      </div>
+      <input type="file" accept={ACCEPTED_IMAGE_TYPES.join(',')} className="hidden" onChange={(e) => pickPhoto(view, e.target.files?.[0])} />
+    </label>
+  );
   return (
     <form onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-[1fr_320px]">
       <div className="space-y-8">
         <section className="space-y-3">
           <h2 className="font-medium">1. Photos</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {VIEWS.map(({ view, label, hint }) => (
-              <label key={view} className="block cursor-pointer rounded-lg border border-dashed border-neutral-300 bg-white p-3 hover:border-neutral-500">
-                <div className="text-sm font-medium">{label}</div>
-                <div className="mb-2 text-xs text-neutral-500">{hint}</div>
-                <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-neutral-50">
-                  {photos[view] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={photos[view]!.preview} alt={view} className="h-full w-full object-contain" />
-                  ) : (
-                    <span className="text-xs text-neutral-400">Click to choose a photo</span>
-                  )}
-                </div>
-                <input type="file" accept={ACCEPTED_IMAGE_TYPES.join(',')} className="hidden" onChange={(e) => pickPhoto(view, e.target.files?.[0])} />
-              </label>
-            ))}
-          </div>
+          <div className="max-w-md">{slot(MAIN)}</div>
+          <details className="rounded-lg border border-neutral-200 bg-white p-3" open={Object.keys(photos).length > 1}>
+            <summary className="cursor-pointer text-sm font-medium">More photos of the same piece (optional)</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">{EXTRA.map(slot)}</div>
+          </details>
         </section>
 
         <section className="space-y-3">
           <h2 className="font-medium">2. Background</h2>
           <label className="flex items-start gap-2 text-sm">
-            <input type="radio" name="background" value="clean" defaultChecked className="mt-1" />
-            <span>Clean background (plain wall or floor, nothing else touching the piece)</span>
+            <input type="radio" name="background" value="clean" checked={!busyBackground} onChange={() => setBusyBackground(false)} className="mt-1" />
+            <span>Clean background (plain white or plain wall, only this piece)</span>
           </label>
           <label className="flex items-start gap-2 text-sm">
-            <input type="radio" name="background" value="busy" className="mt-1" />
-            <span>Busy background: remove it for me. <span className="text-neutral-500">Extra cost; results may be less accurate than a clean photo.</span></span>
+            <input type="radio" name="background" value="busy" checked={busyBackground} onChange={() => setBusyBackground(true)} className="mt-1" />
+            <span>Busy background or several pieces: cut out the piece for me. <span className="text-neutral-500">Extra cost.</span></span>
           </label>
+          {busyBackground && (
+            <input name="pieceLabel" maxLength={60} placeholder='Which piece? e.g. "table", "armchair on the left"' className={input} />
+          )}
         </section>
 
         <section className="space-y-3">
-          <h2 className="font-medium">3. Piece details (mm)</h2>
+          <h2 className="font-medium">3. Piece</h2>
           <input name="name" required maxLength={100} placeholder="Name, e.g. Lounge chair Oslo" className={input} />
-          <div className="grid grid-cols-3 gap-3">
-            <input name="widthMm" type="number" required min={100} max={5000} placeholder="Width" className={input} />
-            <input name="depthMm" type="number" required min={100} max={5000} placeholder="Depth" className={input} />
-            <input name="heightMm" type="number" required min={100} max={3000} placeholder="Height" className={input} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <input name="seatHeightMm" type="number" min={50} max={2000} placeholder="Seat height (optional)" className={input} />
-            <input name="armHeightMm" type="number" min={50} max={2000} placeholder="Arm height (optional)" className={input} />
+          <select name="pieceType" required defaultValue="dining_chair" className={input}>
+            {PIECE_TYPES.map((t) => (
+              <option key={t} value={t}>{PIECE_TYPE_INFO[t].label} (typical height {PIECE_TYPE_INFO[t].defaultHeightMm} mm)</option>
+            ))}
+          </select>
+          <div>
+            <div className="mb-1 text-xs text-neutral-500">Overall size in mm, if the customer gave one. Leave empty if unknown: the draft is scaled to the typical height and you adjust it in Inventor.</div>
+            <div className="grid grid-cols-3 gap-3">
+              <input name="widthMm" type="number" min={100} max={5000} placeholder="Width" className={input} />
+              <input name="depthMm" type="number" min={100} max={5000} placeholder="Depth" className={input} />
+              <input name="heightMm" type="number" min={100} max={3000} placeholder="Height" className={input} />
+            </div>
           </div>
           <textarea name="note" maxLength={1000} rows={3} placeholder="Note (optional)" className={input} />
         </section>
@@ -162,12 +180,13 @@ export function JobForm() {
       </div>
 
       <aside className="h-fit rounded-lg border border-neutral-200 bg-white p-4 text-sm">
-        <h3 className="mb-2 font-medium">Photo tips for accuracy</h3>
+        <h3 className="mb-2 font-medium">Tips</h3>
         <ul className="list-disc space-y-1.5 pl-4 text-neutral-600">
           {TIPS.map((t) => <li key={t}>{t}</li>)}
         </ul>
         <p className="mt-4 text-xs text-neutral-500">
-          The result is a real-size reference mesh to trace over in Inventor, not a finished production model.
+          The result is a 3D draft (STEP, STL, OBJ) to refine in Inventor: overall shape and proportions,
+          not final details like cushion thickness, timber sizes or radii.
         </p>
       </aside>
     </form>

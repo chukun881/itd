@@ -29,6 +29,27 @@
       "when": 1793886874095,
       "tag": "0003_strong_slayback",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793897171761,
+      "tag": "0004_drop_clerk",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793897179649,
+      "tag": "0005_optional_size",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793897197785,
+      "tag": "0006_local_auth_and_piece",
+      "breakpoints": true
     }
   ]
 }
